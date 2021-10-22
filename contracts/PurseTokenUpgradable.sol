@@ -120,7 +120,8 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         balanceOf[_account] += _amount;
 
         totalSupply += _amount;
-        emit Mint(address(0), _account, _amount);
+
+        mintEvent(_account, _amount);
     }
 
     function burn(uint256 _amount) public whenNotPaused {
@@ -129,33 +130,34 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         updateAccumulateBalance(msg.sender);
         balanceOf[msg.sender] -= _amount;
         totalSupply -= _amount;
-        emit Burn(msg.sender, _amount);
+
+        burnEvent(msg.sender, _amount);
     }
 
     function updateAccumulateBalance(address _holder) private {
         if (accAmount[_holder].lastUpdateTime == 0) {
             if (_getRewardStartTime == 0) {
-                uint256 interval = (block.timestamp - _lastRewardStartTime)/ _averageInterval;
-                accAmount[_holder].lastUpdateTime = _lastRewardStartTime + (interval * _averageInterval);   //1 day = 86400 seconds
+                uint256 interval = (block.timestamp - _lastRewardStartTime) / _averageInterval;
+                accAmount[_holder].lastUpdateTime = _lastRewardStartTime + (interval * _averageInterval);
             } else {
                 if (block.timestamp < _getRewardStartTime) {
-                    uint256 interval = (block.timestamp - _lastRewardStartTime)/ _averageInterval;
-                    accAmount[_holder].lastUpdateTime = _lastRewardStartTime + (interval * _averageInterval);   //1 day = _timeDecimal seconds
+                    uint256 interval = (block.timestamp - _lastRewardStartTime) / _averageInterval;
+                    accAmount[_holder].lastUpdateTime = _lastRewardStartTime + (interval * _averageInterval);
                 } else {
-                    uint256 interval = (block.timestamp - _getRewardStartTime)/ _averageInterval;
+                    uint256 interval = (block.timestamp - _getRewardStartTime) / _averageInterval;
                     accAmount[_holder].lastUpdateTime = _getRewardStartTime + (interval * _averageInterval);
                 }
             }
         }
         else if (block.timestamp < _getRewardStartTime) {
             if (accAmount[_holder].lastUpdateTime < _lastRewardStartTime) {
-                uint256 interval = (block.timestamp - _lastRewardStartTime)/ _averageInterval;
+                uint256 interval = (block.timestamp - _lastRewardStartTime) / _averageInterval;
                 uint256 accumulateAmount = balanceOf[_holder] * interval;
-                accAmount[_holder].lastUpdateTime = _lastRewardStartTime + (interval * _averageInterval);   //1 day = 86400 seconds
+                accAmount[_holder].lastUpdateTime = _lastRewardStartTime + (interval * _averageInterval);
                 accAmount[_holder].amount = accumulateAmount;
             }
             else {
-                uint256 interval = (block.timestamp - accAmount[_holder].lastUpdateTime)/ _averageInterval;
+                uint256 interval = (block.timestamp - accAmount[_holder].lastUpdateTime) / _averageInterval;
                 if (interval >= 1) {
                     uint256 accumulateAmount = balanceOf[_holder] * interval;
                     accAmount[_holder].lastUpdateTime += (interval * _averageInterval);
@@ -163,9 +165,9 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
                 }
             }
         }
-        else if(block.timestamp >= _getRewardStartTime) {
+        else if (block.timestamp >= _getRewardStartTime) {
             if (accAmount[_holder].lastUpdateTime < _lastRewardStartTime) {
-                uint256 interval = (_getRewardStartTime - _lastRewardStartTime)/ _averageInterval;
+                uint256 interval = (_getRewardStartTime - _lastRewardStartTime) / _averageInterval;
                 uint256 lastmonthAccAmount = balanceOf[_holder] * interval;
                 accAmount[_holder].amount = 0;
                 accAmount[_holder].accReward = lastmonthAccAmount * _monthlyDistributePr * _percentageDistribute * 100 / _totalSupply / _numOfDaysPerMth / 10000;
@@ -173,7 +175,7 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
                 updateAccumulateBalance(_holder);
             }
             else if (accAmount[_holder].lastUpdateTime >= _lastRewardStartTime && accAmount[_holder].lastUpdateTime < _getRewardStartTime) {
-                uint256 interval = (_getRewardStartTime - accAmount[_holder].lastUpdateTime)/ _averageInterval;
+                uint256 interval = (_getRewardStartTime - accAmount[_holder].lastUpdateTime) / _averageInterval;
                 if (interval >= 1) {
                     uint256 accumulateAmount = balanceOf[_holder] * interval;
                     uint256 lastmonthAccAmount = accAmount[_holder].amount + accumulateAmount;
@@ -191,7 +193,7 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
                 }
             }
             else {
-                uint256 interval = (block.timestamp - accAmount[_holder].lastUpdateTime)/ _averageInterval;
+                uint256 interval = (block.timestamp - accAmount[_holder].lastUpdateTime) / _averageInterval;
                 if (interval >= 1) {
                     uint256 accumulateAmount = balanceOf[_holder] * interval;
                     accAmount[_holder].lastUpdateTime += (interval * _averageInterval);
@@ -202,13 +204,12 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
     }
 
 
-
     function updateAccumulateBalanceTransaction(address _from, address _to) private {
         updateAccumulateBalance(_from);
         updateAccumulateBalance(_to);
     }
 
-    function claimDistributionPurse() public whenNotPaused returns(bool success) {
+    function claimDistributionPurse() public whenNotPaused returns (bool success) {
         require(block.timestamp > _getRewardStartTime, "Claim not started");
         require(block.timestamp < _getRewardEndTime, "Claim period over");
 
@@ -232,7 +233,6 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         if (_getRewardStartTime != 0) {
             _lastRewardStartTime = _getRewardStartTime;
         }
-        // _lastRewardStartTime = _getRewardStartTime;
         _numOfDaysPerMth = _numOfDays;
         _getRewardStartTime = _rewardStartTime;
         _getRewardEndTime = _rewardEndTime;
@@ -246,9 +246,9 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         uint256 liqAmount;
         uint256 disAmount;
         (
-            burnAmount,
-            liqAmount,
-            disAmount
+        burnAmount,
+        liqAmount,
+        disAmount
         ) = _calculateDeductAmount(_amount);
 
         if (burnAmount >= 0 || liqAmount >= 0 || disAmount >= 0) {
@@ -276,7 +276,7 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         return (burnAmount, liqAmount, disAmount);
     }
 
-    function burnPrivate( address _account, uint256 _burnAmount, uint256 _liqAmount, uint256 _disAmount) private {
+    function burnPrivate(address _account, uint256 _burnAmount, uint256 _liqAmount, uint256 _disAmount) private {
         require(_account != address(0), "0 address");
         uint256 accountBalance = balanceOf[_account];
         uint256 deductAmount = _burnAmount + _liqAmount + _disAmount;
@@ -286,11 +286,10 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         balanceOf[_account] -= _disAmount;
 
         totalSupply -= _burnAmount;
-        // updateAccumulateBalanceTransaction(disPool, liqPool);
         balanceOf[liqPool] += _liqAmount;
         balanceOf[disPool] += _disAmount;
 
-        emit Burn(_account, _burnAmount);
+        burnEvent(_account, _burnAmount);
         emit Transfer(msg.sender, liqPool, _liqAmount);
         emit Transfer(msg.sender, disPool, _disAmount);
     }
@@ -320,7 +319,7 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         minimumSupply = _minimumSupply;
     }
 
-    function addAdmin(address newAdmin) public onlyOwner{
+    function addAdmin(address newAdmin) public onlyOwner {
         require(!isAdmin[newAdmin], "Is admin");
 
         isAdmin[newAdmin] = true;
@@ -332,8 +331,8 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         require(index < admins.length, "Input over admins length");
         require(isAdmin[removeOwner], "Not an admin");
 
-        for (uint i = index; i<admins.length-1; i++){
-            admins[i] = admins[i+1];
+        for (uint i = index; i < admins.length - 1; i++) {
+            admins[i] = admins[i + 1];
         }
         admins.pop();
 
@@ -341,7 +340,7 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         return admins;
     }
 
-    function transferERCToken(address token, uint256 amount, address _to) public whenNotPaused onlyOwner{
+    function transferERCToken(address token, uint256 amount, address _to) public whenNotPaused onlyOwner {
         require(_to != address(0), "0 address");
         if (token == address(this)) {
             updateAccumulateBalance(_to);
@@ -385,6 +384,16 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
 
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
+    function mintEvent(address to, uint256 amount) internal {
+        emit Mint(address(0), to, amount);
+        emit Transfer(address(0), to, amount);
+    }
+
+    function burnEvent(address from, uint256 amount) internal {
+        emit Burn(from, amount);
+        emit Transfer(from, address(0), amount);
+    }
+
     function initialize(
         address _to,
         address _lPool,
@@ -399,7 +408,7 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
 
         name = "PURSE TOKEN";
         symbol = "PURSE";
-        totalSupply = 64000000000 * (10**18); // 64 billion tokens
+        totalSupply = 64000000000 * (10 ** 18);
         decimals = 18;
         minimumSupply = 12800000000 * (10 ** 18);
 
@@ -416,6 +425,7 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
 
         balanceOf[_to] = totalSupply;
         updateAccumulateBalance(_to);
-        emit Mint(address(0), _to, totalSupply);
+
+        mintEvent(_to, totalSupply);
     }
 }
