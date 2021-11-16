@@ -16,7 +16,7 @@
     "sizer": "npx hardhat size-contracts"
   },
   "author": "FunctionX Team",
-  "license": "",
+  "license": "MIT",
   "devDependencies": {
     "@atixlabs/hardhat-time-n-mine": "0.0.5",
     "@ethersproject/abstract-signer": "^5.0.6",
