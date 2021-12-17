@@ -6,16 +6,13 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
-abstract contract ERC20Interface {
-
-    function transfer(address to, uint tokens) public virtual returns (bool success);
-
-    function transferFrom(address from, address to, uint tokens) public virtual returns (bool success);
-
-}
 
 contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgradeable, OwnableUpgradeable {
+
+    using SafeERC20Upgradeable for IERC20Upgradeable;
 
     string public name;
     string public symbol;
@@ -55,13 +52,15 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
     event Burn(address indexed _from, uint256 _value);
     event Mint(address indexed _from, address indexed _to, uint256 _value);
     event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+    event UpdatePercent(uint256 _newDisPercent,  uint256 _newLiqPercent, uint256 _newBurnPercent);
+    event UpdateMinSupply(uint256 _newMinimumSupply);
 
     modifier onlyAdmin() {
         require(isAdmin[msg.sender], "Not Admin");
         _;
     }
 
-    function transfer(address _to, uint256 _value) public whenNotPaused returns (bool success)
+    function transfer(address _to, uint256 _value) external whenNotPaused returns (bool success)
     {
         require(balanceOf[msg.sender] >= _value, "Not enough balance");
         if (isWhitelistedTo[_to] || isWhitelistedFrom[msg.sender]) {
@@ -84,14 +83,14 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         }
     }
 
-    function approve(address _spender, uint256 _value) public whenNotPaused returns (bool success)
+    function approve(address _spender, uint256 _value) external whenNotPaused returns (bool success)
     {
         allowance[msg.sender][_spender] = _value;
         emit Approval(msg.sender, _spender, _value);
         return true;
     }
 
-    function transferFrom(address _from, address _to, uint256 _value) public whenNotPaused returns (bool success) {
+    function transferFrom(address _from, address _to, uint256 _value) external whenNotPaused returns (bool success) {
         require(_value <= balanceOf[_from], "Not enough balance");
         require(_value <= allowance[_from][msg.sender], "Not enough allowance");
         if (isWhitelistedTo[_to] || isWhitelistedFrom[msg.sender]) {
@@ -114,7 +113,7 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         }
     }
 
-    function mint(address _account, uint256 _amount) public whenNotPaused onlyAdmin {
+    function mint(address _account, uint256 _amount) external whenNotPaused onlyAdmin {
         require(_account != address(0), "0 address");
         updateAccumulateBalance(_account);
         balanceOf[_account] += _amount;
@@ -124,7 +123,7 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         mintEvent(_account, _amount);
     }
 
-    function burn(uint256 _amount) public whenNotPaused {
+    function burn(uint256 _amount) external whenNotPaused {
         require(_amount != 0, "0 address");
         require(balanceOf[msg.sender] >= _amount, "Not enough balance");
         updateAccumulateBalance(msg.sender);
@@ -209,7 +208,7 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         updateAccumulateBalance(_to);
     }
 
-    function claimDistributionPurse() public whenNotPaused returns (bool success) {
+    function claimDistributionPurse() external whenNotPaused returns (bool success) {
         require(block.timestamp > _getRewardStartTime, "Claim not started");
         require(block.timestamp < _getRewardEndTime, "Claim period over");
 
@@ -218,11 +217,11 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         uint256 claimAmount = accAmount[msg.sender].accReward;
         accAmount[msg.sender].accReward = 0;
 
-        ERC20Interface(address(this)).transfer(msg.sender, claimAmount);
+        IERC20Upgradeable(disPool).safeTransfer(msg.sender, claimAmount);
         return true;
     }
 
-    function activateClaimMonthly(uint256 _rewardStartTime, uint256 _rewardEndTime, uint256 _monthlyDisPr, uint256 _numOfDays, uint256 _percentage) public onlyAdmin {
+    function activateClaimMonthly(uint256 _rewardStartTime, uint256 _rewardEndTime, uint256 _monthlyDisPr, uint256 _numOfDays, uint256 _percentage) external onlyAdmin {
         require(_rewardStartTime > block.timestamp, "Less than current time");
         require(_rewardEndTime > _rewardStartTime, "Less than start time");
         require(_numOfDays > 0, "Less than 0");
@@ -251,23 +250,22 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         disAmount
         ) = _calculateDeductAmount(_amount);
 
-        if (burnAmount >= 0 || liqAmount >= 0 || disAmount >= 0) {
-            burnPrivate(_from, burnAmount, liqAmount, disAmount);
-        }
+        burnPrivate(_from, burnAmount, liqAmount, disAmount);
+
         transferAmount = _amount - burnAmount - liqAmount - disAmount;
 
         return transferAmount;
     }
 
     function _calculateDeductAmount(uint256 _amount) internal view returns (uint256, uint256, uint256) {
-        uint256 burnAmount;
-        uint256 liqAmount;
-        uint256 disAmount;
+        uint256 burnAmount = 0;
+        uint256 liqAmount = 0;
+        uint256 disAmount = 0;
 
         if (totalSupply > minimumSupply) {
-            burnAmount = (_amount * burnPercent) / 100;
-            liqAmount = (_amount * liqPercent) / 100;
-            disAmount = (_amount * disPercent) / 100;
+            burnAmount = (_amount * burnPercent) / 10000;
+            liqAmount = (_amount * liqPercent) / 10000;
+            disAmount = (_amount * disPercent) / 10000;
             uint256 availableBurn = totalSupply - minimumSupply;
             if (burnAmount > availableBurn) {
                 burnAmount = availableBurn;
@@ -294,41 +292,44 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         emit Transfer(msg.sender, disPool, _disAmount);
     }
 
-    function updateLPoolAdd(address _newLPool) public onlyOwner {
+    function updateLPoolAdd(address _newLPool) external onlyOwner {
         require(_newLPool != liqPool, "Same with previous address");
 
         liqPool = _newLPool;
     }
 
-    function updateDPoolAdd(address _newDPool) public onlyOwner {
+    function updateDPoolAdd(address _newDPool) external onlyOwner {
         require(_newDPool != disPool, "Same with previous address");
 
         disPool = _newDPool;
     }
 
-    function updatePercent(uint256 _newDisPercent, uint256 _newLiqPercent, uint256 _newBurnPercent) public onlyOwner {
-        require(_newDisPercent >= 0 && _newDisPercent <= 100 && _newLiqPercent >= 0 && _newLiqPercent <= 100 && _newBurnPercent >= 0 && _newBurnPercent <= 100, "% < 0 or > 100");
-        require(_newDisPercent + _newLiqPercent + _newBurnPercent <= 100, "Total more than 100");
+    function updatePercent(uint256 _newDisPercent, uint256 _newLiqPercent, uint256 _newBurnPercent) external onlyOwner {
+        require(_newDisPercent + _newLiqPercent + _newBurnPercent <= 10000, "Total more than 10000");
 
         disPercent = _newDisPercent;
         liqPercent = _newLiqPercent;
         burnPercent = _newBurnPercent;
+
+        emit UpdatePercent(disPercent, liqPercent, burnPercent);
     }
 
-    function updateMinimumSupply(uint256 _minimumSupply) public onlyOwner {
+    function updateMinimumSupply(uint256 _minimumSupply) external onlyOwner {
         minimumSupply = _minimumSupply;
+
+        emit UpdateMinSupply(minimumSupply);
     }
 
-    function addAdmin(address newAdmin) public onlyOwner {
+    function addAdmin(address newAdmin) external onlyOwner {
         require(!isAdmin[newAdmin], "Is admin");
 
         isAdmin[newAdmin] = true;
         admins.push(newAdmin);
     }
 
-    function removeAdmin(uint index) public onlyOwner returns (address[] memory){
-        address removeOwner = admins[index];
+    function removeAdmin(uint index) external onlyOwner returns (address[] memory){
         require(index < admins.length, "Input over admins length");
+        address removeOwner = admins[index];
         require(isAdmin[removeOwner], "Not an admin");
 
         for (uint i = index; i < admins.length - 1; i++) {
@@ -344,40 +345,40 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         require(_to != address(0), "0 address");
         if (token == address(this)) {
             updateAccumulateBalance(_to);
-            ERC20Interface(token).transfer(_to, amount);
+            IERC20Upgradeable(token).safeTransfer(_to, amount);
         } else {
-            ERC20Interface(token).transfer(_to, amount);
+            IERC20Upgradeable(token).safeTransfer(_to, amount);
         }
     }
 
-    function pause() public whenNotPaused onlyOwner {
+    function pause() external whenNotPaused onlyOwner {
         _pause();
     }
 
-    function unpause() public whenPaused onlyOwner {
+    function unpause() external whenPaused onlyOwner {
         _unpause();
     }
 
-    function setWhitelistedTo(address newWhitelist) public onlyOwner {
-        require(!isWhitelistedTo[newWhitelist], "Whilisted Address");
+    function setWhitelistedTo(address newWhitelist) external onlyOwner {
+        require(!isWhitelistedTo[newWhitelist], "whitelisted Address");
 
         isWhitelistedTo[newWhitelist] = true;
     }
 
-    function removeWhitelistedTo(address newWhitelist) public onlyOwner {
-        require(isWhitelistedTo[newWhitelist], "Non whilisted Address");
+    function removeWhitelistedTo(address newWhitelist) external onlyOwner {
+        require(isWhitelistedTo[newWhitelist], "Non whitelisted Address");
 
         isWhitelistedTo[newWhitelist] = false;
     }
 
-    function setWhitelistedFrom(address newWhitelist) public onlyOwner {
-        require(!isWhitelistedFrom[newWhitelist], "Whilisted Address");
+    function setWhitelistedFrom(address newWhitelist) external onlyOwner {
+        require(!isWhitelistedFrom[newWhitelist], "whitelisted Address");
 
         isWhitelistedFrom[newWhitelist] = true;
     }
 
-    function removeWhitelistedFrom(address newWhitelist) public onlyOwner {
-        require(isWhitelistedFrom[newWhitelist], "Non whilisted Address");
+    function removeWhitelistedFrom(address newWhitelist) external onlyOwner {
+        require(isWhitelistedFrom[newWhitelist], "Non whitelisted Address");
 
         isWhitelistedFrom[newWhitelist] = false;
     }
@@ -401,16 +402,14 @@ contract PurseTokenUpgradable is Initializable, UUPSUpgradeable, PausableUpgrade
         uint256 _liqPercent,
         uint256 _disPercent
     ) public initializer {
+        require(_disPercent + _liqPercent + _burnPercent <= 10000, "Total more than 10000");
         require(_lPool != address(0), "0 address");
-        require(_burnPercent >= 0, "Percentage is 0");
-        require(_liqPercent >= 0, "Percentage is 0");
-        require(_disPercent >= 0, "Percentage is 0");
 
         name = "PURSE TOKEN";
         symbol = "PURSE";
-        totalSupply = 64000000000 * (10 ** 18);
+        totalSupply = 64_000_000_000 * (10 ** 18);
         decimals = 18;
-        minimumSupply = 12800000000 * (10 ** 18);
+        minimumSupply = 12_800_000_000 * (10 ** 18);
 
         liqPool = _lPool;
         disPool = address(this);
